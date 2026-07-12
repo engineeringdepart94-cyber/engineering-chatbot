@@ -1,3 +1,4 @@
+import time
 import re
 import streamlit as st
 import os
@@ -98,7 +99,7 @@ def get_relevant_chunks(query, k=6):
         if i not in combined_indices:
             combined_indices.append(i)
 
-    return [chunks[i] for i in combined_indices[:10]]
+    return [chunks[i] for i in combined_indices[:7]]
 
 
 def ask_ai(user_question, retrieval_query=None):
@@ -112,24 +113,28 @@ def ask_ai(user_question, retrieval_query=None):
         "Agar context mein jawab na mile to bolo 'Yeh information PDF mein maujood nahi'."
     )
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Context:\n{context}\n\nSawal: {user_question}"},
-            ],
-            temperature=0.3,
-        )
-        return response.choices[0].message.content
-    except RateLimitError:
-        return (
-            "⏳ Abhi thori dair mein bohat zyada sawal poochhe gaye hain, is liye free "
-            "AI quota mukammal ho gaya hai. Bara-e-karam 1-2 minute intezar kar ke "
-            "dobara sawal poochein."
-        )
-    except Exception as e:
-        return f"⚠️ Kuch masla aa gaya, dobara koshish karein. ({e})"
+    for attempt in range(2):
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Context:\n{context}\n\nSawal: {user_question}"},
+                ],
+                temperature=0.3,
+            )
+            return response.choices[0].message.content
+        except RateLimitError:
+            if attempt == 0:
+                time.sleep(8)
+                continue
+            return (
+                "⏳ Abhi thori dair mein bohat zyada sawal poochhe gaye hain, is liye free "
+                "AI quota mukammal ho gaya hai. Bara-e-karam 1-2 minute intezar kar ke "
+                "dobara sawal poochein."
+            )
+        except Exception as e:
+            return f"⚠️ Kuch masla aa gaya, dobara koshish karein. ({e})"
 
 
 def get_search_query(user_question):
