@@ -54,40 +54,51 @@ stt_model = load_whisper_model()
 # Helper functions
 # ---------------------------------------------------------------
 
-def keyword_search_chunks(query, top_n=5):
+def keyword_search_chunks(query, top_n=6):
     """Exact keyword matching — PDF ke chunks mein query ke alfaz literally
     kitni baar aaye hain, us hisaab se score karta hai. Yeh semantic search
     ke sath milkar 'hybrid search' banata hai: agar AI embedding kamzor bhi
     ho, keyword wala sahi chunk phir bhi mil jata hai (e.g. 'boundary wall'
-    jahan bhi likha ho, wahan zaroor pahunchega)."""
-    words = [w for w in re.findall(r"[A-Za-z]+", query.lower()) if len(w) > 2]
+    jahan bhi likha ho, wahan zaroor pahunchega).
+
+    Scoring: pehle dekhte hain chunk mein KITNE ALAG alag query words maujood
+    hain (distinct hits) — isay priority dete hain. Sirf ek hi lafz ka zyada
+    baar repeat hona (jaise ek dense table mein) galat jagah ko upar nahi le
+    ja sakta, kyunke frequency ko sirf tie-breaker ki tarah use karte hain."""
+    words = list(set(w for w in re.findall(r"[A-Za-z]+", query.lower()) if len(w) > 2))
     if not words:
         return []
     scored = []
     for i, chunk in enumerate(chunks):
         chunk_lower = chunk.lower()
-        score = sum(chunk_lower.count(w) for w in words)
-        if score > 0:
-            scored.append((score, i))
+        distinct_hits = sum(1 for w in words if w in chunk_lower)
+        if distinct_hits == 0:
+            continue
+        total_count = sum(chunk_lower.count(w) for w in words)
+        scored.append((distinct_hits, total_count, i))
     scored.sort(reverse=True)
-    return [i for _, i in scored[:top_n]]
+    return [i for _, _, i in scored[:top_n]]
 
 
-def get_relevant_chunks(query, k=5):
+def get_relevant_chunks(query, k=6):
     query_embedding = embedder.encode([query])
     distances, indices = index.search(np.array(query_embedding), k)
     semantic_indices = list(indices[0])
 
-    keyword_indices = keyword_search_chunks(query, top_n=5)
+    keyword_indices = keyword_search_chunks(query, top_n=6)
 
-    # Keyword matches ko pehle rakhte hain (zyada bharosemand hote hain),
-    # phir semantic matches — dono ko mila kar duplicates hata dete hain
+    # Dono lists ko interleave (barabar-barabar) karte hain taake keyword
+    # matches semantic matches ko dabayen nahi aur na hi ulta ho
     combined_indices = []
-    for i in keyword_indices + semantic_indices:
+    for a, b in zip(keyword_indices, semantic_indices):
+        for i in (a, b):
+            if i not in combined_indices:
+                combined_indices.append(i)
+    for i in list(keyword_indices) + list(semantic_indices):
         if i not in combined_indices:
             combined_indices.append(i)
 
-    return [chunks[i] for i in combined_indices[:8]]
+    return [chunks[i] for i in combined_indices[:10]]
 
 
 def ask_ai(user_question, retrieval_query=None):
