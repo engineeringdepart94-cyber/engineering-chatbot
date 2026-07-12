@@ -53,7 +53,7 @@ stt_model = load_whisper_model()
 # Helper functions
 # ---------------------------------------------------------------
 
-def get_relevant_chunks(query, k=3):
+def get_relevant_chunks(query, k=5):
     query_embedding = embedder.encode([query])
     distances, indices = index.search(np.array(query_embedding), k)
     return [chunks[i] for i in indices[0]]
@@ -81,15 +81,21 @@ def ask_ai(user_question, retrieval_query=None):
     return response.choices[0].message.content
 
 
-def translate_to_english(text):
-    """PDF English mein hai, is liye voice se aaye sawal ko English mein translate
-    karte hain taake FAISS search behtar (zyada accurate) chunks dhoond sake.
-    Chota/tez model use karta hai taake asal jawab wale model ka quota na khaye."""
+def get_search_query(user_question):
+    """User ke sawal se sirf core technical topic nikalta hai, English mein,
+    filler words ('batao', 'detail', 'kya hai' waghera) hata kar — taake PDF
+    search (FAISS) zyada accurate chunks dhoond sake. Chota/tez model use
+    karta hai taake asal jawab wale model ka quota na khaye."""
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "Translate the given text to English. Reply with ONLY the English translation, nothing else."},
-            {"role": "user", "content": text},
+            {"role": "system", "content": (
+                "Extract only the core technical/engineering topic being asked about, "
+                "in English, as a short search phrase (2-6 words). "
+                "Remove filler words like 'batao', 'tell me', 'what is', 'detail', 'kya hai', 'please'. "
+                "Reply with ONLY the search phrase, nothing else."
+            )},
+            {"role": "user", "content": user_question},
         ],
         temperature=0,
     )
@@ -157,13 +163,15 @@ if audio and audio.get("id") != st.session_state.last_audio_id:
         transcribed = transcribe_audio_bytes(audio["bytes"])
     if transcribed:
         with st.spinner("Behtar jawab ke liye tayari ho rahi hai..."):
-            translated_query = translate_to_english(transcribed)
-        handle_question(transcribed, tag="🎤 ", retrieval_query=translated_query)
+            search_query = get_search_query(transcribed)
+        handle_question(transcribed, tag="🎤 ", retrieval_query=search_query)
         st.rerun()
     else:
         st.warning("Kuch samajh nahi aaya, dobara koshish karein.")
 
 user_text = st.chat_input("Apna sawal type karein...")
 if user_text:
-    handle_question(user_text)
+    with st.spinner("Behtar jawab ke liye tayari ho rahi hai..."):
+        search_query = get_search_query(user_text)
+    handle_question(user_text, retrieval_query=search_query)
     st.rerun()
