@@ -99,7 +99,7 @@ def transcribe_audio_bytes(audio_bytes):
     tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
     with open(tmp_path, "wb") as f:
         f.write(audio_bytes)
-    segments, info = stt_model.transcribe(tmp_path)
+    segments, info = stt_model.transcribe(tmp_path, language="ur")
     text = " ".join([seg.text for seg in segments])
     return text.strip()
 
@@ -132,7 +132,11 @@ st.divider()
 st.write("🎤 Bol kar poochein:")
 audio = mic_recorder(start_prompt="Recording shuru karein", stop_prompt="Recording rokein", key="mic")
 
-if audio:
+if "last_audio_id" not in st.session_state:
+    st.session_state.last_audio_id = None
+
+if audio and audio.get("id") != st.session_state.last_audio_id:
+    st.session_state.last_audio_id = audio.get("id")
     with st.spinner("Aapki awaaz samjhi ja rahi hai..."):
         transcribed = transcribe_audio_bytes(audio["bytes"])
     if transcribed:
