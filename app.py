@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import os
 import json
@@ -53,10 +54,40 @@ stt_model = load_whisper_model()
 # Helper functions
 # ---------------------------------------------------------------
 
+def keyword_search_chunks(query, top_n=5):
+    """Exact keyword matching — PDF ke chunks mein query ke alfaz literally
+    kitni baar aaye hain, us hisaab se score karta hai. Yeh semantic search
+    ke sath milkar 'hybrid search' banata hai: agar AI embedding kamzor bhi
+    ho, keyword wala sahi chunk phir bhi mil jata hai (e.g. 'boundary wall'
+    jahan bhi likha ho, wahan zaroor pahunchega)."""
+    words = [w for w in re.findall(r"[A-Za-z]+", query.lower()) if len(w) > 2]
+    if not words:
+        return []
+    scored = []
+    for i, chunk in enumerate(chunks):
+        chunk_lower = chunk.lower()
+        score = sum(chunk_lower.count(w) for w in words)
+        if score > 0:
+            scored.append((score, i))
+    scored.sort(reverse=True)
+    return [i for _, i in scored[:top_n]]
+
+
 def get_relevant_chunks(query, k=5):
     query_embedding = embedder.encode([query])
     distances, indices = index.search(np.array(query_embedding), k)
-    return [chunks[i] for i in indices[0]]
+    semantic_indices = list(indices[0])
+
+    keyword_indices = keyword_search_chunks(query, top_n=5)
+
+    # Keyword matches ko pehle rakhte hain (zyada bharosemand hote hain),
+    # phir semantic matches — dono ko mila kar duplicates hata dete hain
+    combined_indices = []
+    for i in keyword_indices + semantic_indices:
+        if i not in combined_indices:
+            combined_indices.append(i)
+
+    return [chunks[i] for i in combined_indices[:8]]
 
 
 def ask_ai(user_question, retrieval_query=None):
