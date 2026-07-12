@@ -59,8 +59,9 @@ def get_relevant_chunks(query, k=3):
     return [chunks[i] for i in indices[0]]
 
 
-def ask_ai(user_question):
-    context_chunks = get_relevant_chunks(user_question)
+def ask_ai(user_question, retrieval_query=None):
+    query_for_search = retrieval_query if retrieval_query else user_question
+    context_chunks = get_relevant_chunks(query_for_search)
     context = "\n\n".join(context_chunks)
 
     system_prompt = (
@@ -78,6 +79,21 @@ def ask_ai(user_question):
         temperature=0.3,
     )
     return response.choices[0].message.content
+
+
+def translate_to_english(text):
+    """PDF English mein hai, is liye voice se aaye sawal ko English mein translate
+    karte hain taake FAISS search behtar (zyada accurate) chunks dhoond sake.
+    Chota/tez model use karta hai taake asal jawab wale model ka quota na khaye."""
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "Translate the given text to English. Reply with ONLY the English translation, nothing else."},
+            {"role": "user", "content": text},
+        ],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def detect_response_lang(text):
@@ -104,10 +120,10 @@ def transcribe_audio_bytes(audio_bytes):
     return text.strip()
 
 
-def handle_question(user_question, tag=""):
+def handle_question(user_question, tag="", retrieval_query=None):
     st.session_state.messages.append({"role": "user", "content": f"{tag}{user_question}"})
     with st.spinner("Jawab tayar kiya ja raha hai..."):
-        answer = ask_ai(user_question)
+        answer = ask_ai(user_question, retrieval_query=retrieval_query)
         audio_path = generate_voice(answer)
     st.session_state.messages.append({"role": "assistant", "content": answer, "audio": audio_path})
 
@@ -140,7 +156,9 @@ if audio and audio.get("id") != st.session_state.last_audio_id:
     with st.spinner("Aapki awaaz samjhi ja rahi hai..."):
         transcribed = transcribe_audio_bytes(audio["bytes"])
     if transcribed:
-        handle_question(transcribed, tag="🎤 ")
+        with st.spinner("Behtar jawab ke liye tayari ho rahi hai..."):
+            translated_query = translate_to_english(transcribed)
+        handle_question(transcribed, tag="🎤 ", retrieval_query=translated_query)
         st.rerun()
     else:
         st.warning("Kuch samajh nahi aaya, dobara koshish karein.")
