@@ -124,14 +124,15 @@ def ask_ai(user_question, retrieval_query=None):
                 temperature=0.3,
             )
             return response.choices[0].message.content
-        except RateLimitError:
+        except RateLimitError as e:
             if attempt == 0:
                 time.sleep(8)
                 continue
             return (
                 "⏳ Abhi thori dair mein bohat zyada sawal poochhe gaye hain, is liye free "
-                "AI quota mukammal ho gaya hai. Bara-e-karam 1-2 minute intezar kar ke "
-                "dobara sawal poochein."
+                "AI quota mukammal ho gaya hai. Bara-e-karam thora intezar kar ke dobara "
+                "sawal poochein.\n\n"
+                f"(Technical detail: {e})"
             )
         except Exception as e:
             return f"⚠️ Kuch masla aa gaya, dobara koshish karein. ({e})"
