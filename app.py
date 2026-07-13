@@ -19,12 +19,12 @@ st.set_page_config(page_title="Engineering Standard AI Chatbot", page_icon="🏗
 # naye message par dobara load nahi hote)
 # ---------------------------------------------------------------
 
-@st.cache_resource(show_spinner="Embedding model load ho raha hai...")
+@st.cache_resource(show_spinner="Loading embedding model...")
 def load_embedder():
     return SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 
 
-@st.cache_resource(show_spinner="PDF data load ho raha hai...")
+@st.cache_resource(show_spinner="Loading PDF data...")
 def load_chunks_and_index():
     with open("data/chunks.json", "r", encoding="utf-8") as f:
         chunks = json.load(f)
@@ -32,16 +32,16 @@ def load_chunks_and_index():
     return chunks, index
 
 
-@st.cache_resource(show_spinner="AI se connect ho raha hai...")
+@st.cache_resource(show_spinner="Connecting to AI...")
 def load_groq_client():
     api_key = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
     if not api_key:
-        st.error("GROQ_API_KEY nahi mili. Streamlit Cloud ke Settings > Secrets mein add karein.")
+        st.error("GROQ_API_KEY not found. Please add it in Streamlit Cloud Settings > Secrets.")
         st.stop()
     return Groq(api_key=api_key)
 
 
-@st.cache_resource(show_spinner="Voice recognition model load ho raha hai...")
+@st.cache_resource(show_spinner="Loading voice recognition model...")
 def load_whisper_model():
     return WhisperModel("small", device="cpu", compute_type="int8")
 
@@ -129,13 +129,12 @@ def ask_ai(user_question, retrieval_query=None):
                 time.sleep(8)
                 continue
             return (
-                "⏳ Abhi thori dair mein bohat zyada sawal poochhe gaye hain, is liye free "
-                "AI quota mukammal ho gaya hai. Bara-e-karam thora intezar kar ke dobara "
-                "sawal poochein.\n\n"
+                "⏳ Too many questions were asked in a short time, so the free AI quota "
+                "has been used up for now. Please wait a moment and ask again.\n\n"
                 f"(Technical detail: {e})"
             )
         except Exception as e:
-            return f"⚠️ Kuch masla aa gaya, dobara koshish karein. ({e})"
+            return f"⚠️ Something went wrong, please try again. ({e})"
 
 
 def get_search_query(user_question):
@@ -190,7 +189,7 @@ def transcribe_audio_bytes(audio_bytes):
 
 def handle_question(user_question, tag="", retrieval_query=None):
     st.session_state.messages.append({"role": "user", "content": f"{tag}{user_question}"})
-    with st.spinner("Jawab tayar kiya ja raha hai..."):
+    with st.spinner("Preparing your answer..."):
         answer = ask_ai(user_question, retrieval_query=retrieval_query)
         audio_path = generate_voice(answer)
     st.session_state.messages.append({"role": "assistant", "content": answer, "audio": audio_path})
@@ -201,7 +200,7 @@ def handle_question(user_question, tag="", retrieval_query=None):
 # ---------------------------------------------------------------
 
 st.title("🏗️ Engineering Standard AI Chatbot")
-st.caption("Type karein ya mic se bolein — Urdu, Roman Urdu ya English mein sawal poochein")
+st.caption("Type or speak your question — in Urdu, Roman Urdu, or English")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -213,27 +212,27 @@ for msg in st.session_state.messages:
             st.audio(msg["audio"], format="audio/mp3")
 
 st.divider()
-st.write("🎤 Bol kar poochein:")
-audio = mic_recorder(start_prompt="Recording shuru karein", stop_prompt="Recording rokein", key="mic")
+st.write("🎤 Ask by voice:")
+audio = mic_recorder(start_prompt="Start recording", stop_prompt="Stop recording", key="mic")
 
 if "last_audio_id" not in st.session_state:
     st.session_state.last_audio_id = None
 
 if audio and audio.get("id") != st.session_state.last_audio_id:
     st.session_state.last_audio_id = audio.get("id")
-    with st.spinner("Aapki awaaz samjhi ja rahi hai..."):
+    with st.spinner("Listening to your voice..."):
         transcribed = transcribe_audio_bytes(audio["bytes"])
     if transcribed:
-        with st.spinner("Behtar jawab ke liye tayari ho rahi hai..."):
+        with st.spinner("Preparing a better answer..."):
             search_query = get_search_query(transcribed)
         handle_question(transcribed, tag="🎤 ", retrieval_query=search_query)
         st.rerun()
     else:
-        st.warning("Kuch samajh nahi aaya, dobara koshish karein.")
+        st.warning("Sorry, I could not understand that. Please try again.")
 
-user_text = st.chat_input("Apna sawal type karein...")
+user_text = st.chat_input("Type your question...")
 if user_text:
-    with st.spinner("Behtar jawab ke liye tayari ho rahi hai..."):
+    with st.spinner("Preparing a better answer..."):
         search_query = get_search_query(user_text)
     handle_question(user_text, retrieval_query=search_query)
     st.rerun()
